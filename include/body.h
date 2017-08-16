@@ -87,6 +87,9 @@ public:
   int64_t getId(){return id_;};
   double getDt(){return dt_;};
   double getDudt(){return dudt_;};
+  int getType(){return type_;}; 
+
+  bool is_wall(){return type_ == 1;};
 
   void setPosition(point_t position){position_ = position;}
   void setAcceleration(point_t acceleration){acceleration_ = acceleration;}
@@ -107,9 +110,11 @@ public:
   void setDt(double dt){dt_ = dt;};
   void setId(int64_t id){id_ = id;};
   void setDudt(double dudt){dudt_ = dudt;};
+  void setType(int type){type_ = type;}; 
 
   friend std::ostream& operator<<(std::ostream& os, const body& b){
     // TODO change regarding to dimension 
+    os << std::setprecision(10); 
     os << "Particle: Pos: " <<b.position_ << " rho: " << b.density_; 
     os << " h: " << b.smoothinglength_;
     os << " P: " << b.pressure_;
@@ -120,6 +125,7 @@ public:
     //os << " Force: hyd: " << b.hydroforce_;
     //os << " grav: " << b.gravforce_;
     os << " a: " << b.acceleration_;
+    os << " id: " << b.id_; 
     return os;
   }      
 
@@ -142,6 +148,7 @@ private:
   double dt_;
   int64_t id_;
   double dudt_;
+  int type_; 
 }; // class body 
   
 #endif // body_h
