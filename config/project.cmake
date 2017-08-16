@@ -109,9 +109,9 @@ cinch_add_application_directory("mpisph/")
 #------------------------------------------------------------------------------#
 # Add application targets
 #------------------------------------------------------------------------------#
-cinch_add_application_directory("app/sedov")
-cinch_add_application_directory("app/fluid")
-cinch_add_application_directory("app/test_io")
-cinch_add_application_directory("app/sodtube")
+#cinch_add_application_directory("app/sedov")
+#cinch_add_application_directory("app/fluid")
+#cinch_add_application_directory("app/test_io")
+#cinch_add_application_directory("app/sodtube")
 cinch_add_application_directory("app/bwd")
-cinch_add_application_directory("app/conv_mom")
+#cinch_add_application_directory("app/conv_mom")
