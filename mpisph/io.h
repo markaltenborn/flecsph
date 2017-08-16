@@ -273,6 +273,7 @@ void inputDataHDF5(
   double* dataY = new double[nparticlesproc];
   double* dataZ = new double[nparticlesproc];
   int64_t* dataInt = new int64_t[nparticlesproc];
+  int * dataInt32 = new int[nparticlesproc]; 
 
   // Positions
   H5PartReadDataFloat64(dataFile,"x",dataX);
@@ -466,11 +467,32 @@ void inputDataHDF5(
     bodies[i].second.setPressure(dataX[i]);
   }
 
-  // Id   
+  //bool b_index = false; 
+  // Id, if the same id, reindex the particles 
+  //b_index = H5_SUCCESS == 
   H5PartReadDataInt64(dataFile,"id",dataInt);
-  for(int64_t i=0; i<nparticlesproc; ++i){
-    bodies[i].second.setId(dataInt[i]);
+  // Check if array uniq 
+  //if(b_index){
+  //	  std::uniq(dataInt,dataInt+nparticlesproc); 
+  //} 
+  // Do a reduction over the processes 
+  //
+  // If ok dont change, otherwise reindex
+  //if(b_index){
+  //  for(int64_t i=0; i<nparticlesproc; ++i){
+  //    bodies[i].second.setId(dataInt[i]);
+  //  }
+  //}else{
+    int64_t start = (totalnbodies/size)*rank+1;
+    std::cout<<rank<<": start:"<<start<<"npart="<<nparticlesproc<<std::endl;
+    for(int64_t i=0; i<nparticlesproc; ++i){
+      bodies[i].second.setId(start+i); 
+    }
+  //}
+  if(size-1 == rank){
+    assert(totalnbodies==bodies.back().second.getId()); 
   }
+  
   
   // Reset buffer to 0, if next value not present 
   std::fill(dataX,dataX+nparticlesproc,0.);
@@ -480,6 +502,16 @@ void inputDataHDF5(
   for(int64_t i=0; i<nparticlesproc; ++i){
     bodies[i].second.setDt(dataX[i]);
   }
+  
+  // Reset buffer to 0, if next value not present 
+  std::fill(dataInt32,dataInt32+nparticlesproc,0.);
+
+  // delta T   
+  H5PartReadDataInt32(dataFile,"type",dataInt32);
+  for(int64_t i=0; i<nparticlesproc; ++i){
+    bodies[i].second.setType(dataInt32[i]);
+  }
+
 
   delete[] dataX;
   delete[] dataY;
@@ -569,6 +601,8 @@ void outputDataHDF5(
   double* b2 = new double[nparticlesproc];
   double* b3 = new double[nparticlesproc];
   int64_t* bi = new int64_t[nparticlesproc];
+  int32_t* bint = new int32_t[nparticlesproc];  
+
 
   // Position
   int64_t pos = 0L;
@@ -621,10 +655,6 @@ void outputDataHDF5(
   simio.addVariable( Flecsi_Sim_IO::Variable("vz",Flecsi_Sim_IO::point, 
         "double", nparticlesproc,b3));
 
-  //H5PartWriteDataFloat64(dataFile,"vx",dataX);
-  //H5PartWriteDataFloat64(dataFile,"vy",dataY);
-  //H5PartWriteDataFloat64(dataFile,"vz",dataZ);
-
   simio.writeVariables();
 
   // Acceleration 
@@ -653,10 +683,6 @@ void outputDataHDF5(
 
   simio.writeVariables();
 
-  // H5PartWriteDataFloat64(dataFile,"vx",dataX);
-  // H5PartWriteDataFloat64(dataFile,"vy",dataY);
-  // H5PartWriteDataFloat64(dataFile,"vz",dataZ);
-
   // Smoothing length, Density, Internal Energy 
   pos = 0L;
   // Extract data from bodies 
@@ -675,10 +701,6 @@ void outputDataHDF5(
 
   simio.writeVariables();
 
-  // H5PartWriteDataFloat64(dataFile,"h",dataX);
-  // H5PartWriteDataFloat64(dataFile,"rho",dataY);
-  // H5PartWriteDataFloat64(dataFile,"u",dataZ);
-
  // Pressure, Mass, Id, timestep
   pos = 0L;
   // Extract data from bodies 
@@ -686,7 +708,8 @@ void outputDataHDF5(
     b1[pos] = bid.second.getPressure();
     b2[pos] = bid.second.getMass();
     b3[pos] = bid.second.getDt();
-    bi[pos++] = bid.second.getId();
+    bi[pos] = bid.second.getId();
+    bint[pos++] = bid.second.getType(); 
   }
   
   simio.addVariable( Flecsi_Sim_IO::Variable("P",Flecsi_Sim_IO::point, 
@@ -696,27 +719,19 @@ void outputDataHDF5(
   simio.addVariable( Flecsi_Sim_IO::Variable("dt",Flecsi_Sim_IO::point, 
         "double", nparticlesproc,b3));
   simio.addVariable( Flecsi_Sim_IO::Variable("id",Flecsi_Sim_IO::point, 
-        "double", nparticlesproc,bi));
+        "int64_t", nparticlesproc,bi));
+  simio.addVariable( Flecsi_Sim_IO::Variable("type",Flecsi_Sim_IO::point, 
+        "int32_t", nparticlesproc,bint));
+
 
   simio.writeVariables();
   simio.closeFile();
-  // H5PartWriteDataFloat64(dataFile,"P",dataX);
-  // H5PartWriteDataFloat64(dataFile,"m",dataY);
-  // H5PartWriteDataFloat64(dataFile,"dt",dataZ);
-  // H5PartWriteDataInt64(dataFile,"id",dataInt);
-
-  //int64_t nparticles;
-  //MPI_Allreduce(&nparticles,&nparticlesproc,1,MPI_INT64_T,MPI_COMM_WORLD);
-
-  // Also output nparticles and timestep 
-  //H5PartWriteDataInt64(dataFile,"nparticles",&nparticles);
-
-  // H5CloseFile(dataFile);
 
   delete[] b1;
   delete[] b2;
   delete[] b3;
   delete[] bi;
+  delete[] bint;
 
   MPI_Barrier(MPI_COMM_WORLD);
   if(rank == 0){

@@ -857,11 +857,49 @@ public:
     MPI_Comm_size(MPI_COMM_WORLD,&size);
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 
+
+    // Go through and search parts 
+    //for(auto bi: rbodies){
+    //  if(bi.second.getId() == 10515){
+    //    std::cout<<rank<<" : FOUND BEFORE ALL"<<std::endl;    
+    //  }
+    //}
+
+
+
     // Sort the keys 
     std::sort(rbodies.begin(),rbodies.end(),
       [](auto& left, auto& right){
-        return left.first < right.first;
+        if(left.first < right.first){
+          return true; 
+        }
+        if(left.first == right.first){
+          return left.second.getId() < right.second.getId(); 
+        }
+        return false; 
       });
+
+    // Check for duplicates
+    /*auto tmp1 = rbodies; 
+    if(!(tmp1.end() == std::unique(tmp1.begin(),tmp1.end(),
+        [&rank](auto& left, auto& right ){ 
+          if( left.first == right.first ){
+            std::cout<<rank<<": unique check: "<<left.second<<
+            " && "<<right.second<<std::endl;
+            assert(right.second.getId() != left.second.getId());
+            return true; 
+          } 
+          return false; 
+        }))){
+        std::cout<<rank<<": duplicated keys in mpi_sort begin"<<std::endl;
+    }*/
+
+    // Go through and search parts 
+    //for(auto bi: rbodies){
+    //  if(bi.second.getId() == 10515){
+    //    std::cout<<rank<<" : FOUND PREVISOU"<<std::endl;    
+    //  }
+    //}
 
     // If one process, done 
     if(size==1){
@@ -869,20 +907,21 @@ public:
     } // if
 
     // Create a vector for the samplers 
-    std::vector<entity_key_t> keys_sample;
+    std::vector<std::pair<entity_key_t,int64_t>> keys_sample;
     // Number of elements for sampling 
     // In this implementation we share up to 256KB to 
     // the master. 
-    size_t nsample = noct / sizeof(entity_key_t);
+    size_t nsample = noct / sizeof(std::pair<entity_key_t,int64_t>);
     if(rbodies.size()<nsample){nsample = rbodies.size();}
     int chuncksize = rbodies.size()/nsample;
     
     for(size_t i=0;i<nsample;++i){
-      keys_sample.push_back(rbodies[chuncksize*i].first);
+      keys_sample.push_back(std::make_pair(rbodies[chuncksize*i].first,
+      rbodies[chuncksize*i].second.getId()));
     } // for
     assert(keys_sample.size()==nsample);
 
-    std::vector<entity_key_t> master_keys;
+    std::vector<std::pair<entity_key_t,int64_t>> master_keys;
     std::vector<int> master_recvcounts;
     std::vector<int> master_offsets;
     int master_nkeys = 0; 
@@ -899,11 +938,11 @@ public:
     // Sort the received keys and create the pivots
     if(rank == 0){
       master_offsets.resize(size); 
-      master_nkeys = noct/sizeof(entity_key_t)*size;
+      master_nkeys = noct/sizeof(std::pair<entity_key_t,int64_t>)*size;
       if(totalnbodies<master_nkeys){master_nkeys=totalnbodies;}
       // Number to receiv from each process
       for(int i=0;i<size;++i){
-        master_recvcounts[i]*=sizeof(entity_key_t);
+        master_recvcounts[i]*=sizeof(std::pair<entity_key_t,int64_t>);
       } // for
       std::partial_sum(master_recvcounts.begin(),master_recvcounts.end(),
         &master_offsets[0]); 
@@ -911,61 +950,80 @@ public:
       master_keys.resize(master_nkeys);
     } // if
 
-    MPI_Gatherv(&keys_sample[0],nsample*sizeof(entity_key_t),MPI_BYTE,
-      &master_keys[0],&master_recvcounts[0],&master_offsets[0],MPI_BYTE,
-      0,MPI_COMM_WORLD);
+    MPI_Gatherv(&keys_sample[0],nsample*sizeof(std::pair<entity_key_t,int64_t>)
+      ,MPI_BYTE,&master_keys[0],&master_recvcounts[0],&master_offsets[0]
+      ,MPI_BYTE,0,MPI_COMM_WORLD);
 
     // Generate the splitters
-    std::vector<entity_key_t> splitters; 
+    std::vector<std::pair<entity_key_t,int64_t>> splitters; 
     splitters.resize(size-1);
     if(rank==0){
-      std::sort(master_keys.begin(),master_keys.end());
+      std::sort(master_keys.begin(),master_keys.end(),
+        [](auto& left, auto& right){
+          if(left.first < right.first){
+            return true; 
+          }
+          if(left.first == right.first){
+            return left.second < right.second; 
+          }
+          return false; 
+        });
+
       //std::cout<<entity_key_t::first_key()<<std::endl;
       chuncksize = master_nkeys/size;
       for(int i=0;i<size-1;++i){
         splitters[i] = master_keys[(i+1)*chuncksize];
-        //std::cout<<splitters[i]<<std::endl;
+        //std::cout<<splitters[i].first<<std::endl;
       } // for
+      // Last key 
       //std::cout<<entity_key_t::last_key()<<std::endl;
     } // if
 
     // Bradcast the splitters 
-    MPI_Bcast(&splitters[0],(size-1)*sizeof(entity_key_t),MPI_BYTE,
-      0,MPI_COMM_WORLD);
+    MPI_Bcast(&splitters[0],(size-1)*sizeof(std::pair<entity_key_t,int64_t>)
+    ,MPI_BYTE,0,MPI_COMM_WORLD);
 
     // The rbodies array is already sorted. We just need to determine the 
     // limits for each process
     // Reset the class buffer 
     reset_buffers();
     
+    int64_t particlescheck = 0L;
+    int cur_proc = 0;
     for(auto bi: rbodies){
-      for(int i = 0; i< size;++i){
-        if(i == 0 && bi.first < splitters[i]){
-          scount[0]++;
-        }else if(i == size-1 && bi.first >= splitters[size-2]){
-          scount[i]++;
-        }else if(bi.first < splitters[i] && bi.first >= splitters[i-1]){
-          scount[i]++;
-        } // if
-      } // for
-    } // for
- 
+      if(cur_proc == size-1){
+        // Last process reached, just copy 
+        scount[cur_proc]++; 
+        particlescheck++;
+        continue; 
+      }
+      if(bi.first < splitters[cur_proc].first){
+        scount[cur_proc]++;
+        particlescheck++;
+      }else{
+        scount[++cur_proc]++;
+        particlescheck++;
+      }
+    }
+  
+    //assert(particlescheck == rbodies.size());  
+    
     // Share the bucket 
     // First send the sizes of each bucket 
     MPI_Alltoall(&scount[0],1,MPI_INT,&rcount[0],1,MPI_INT,
       MPI_COMM_WORLD);
-
+    
     // Create the offset for alltoallv
     //  First receiv offset
     std::partial_sum(rcount.begin(),rcount.end(),&roffset[0]); 
     // As we need an exscan, add a zero
     roffset.insert(roffset.begin(),0);
-  
+    
     // Then send offsets
     std::partial_sum(scount.begin(),scount.end(),&soffset[0]);
     // As we need an exscan, add a zero
     soffset.insert(soffset.begin(),0);
- 
+    
     // The receiv buffer, work in th rbodies
     std::vector<std::pair<entity_key_t,body>> recvbuffer; 
     recvbuffer.resize(roffset.back(),
@@ -978,27 +1036,43 @@ public:
       soffset[i] *= sizeof(std::pair<entity_key_t,body>);
       roffset[i] *= sizeof(std::pair<entity_key_t,body>);
     } // for
-   
+    
     // Use this array for the global buckets communication
     MPI_Alltoallv(&rbodies[0],&scount[0],&soffset[0],MPI_BYTE,
-      &recvbuffer[0],&rcount[0],&roffset[0],MPI_BYTE,
-      MPI_COMM_WORLD);
-
-    //rbodies.clear();
+      &recvbuffer[0],&rcount[0],&roffset[0],MPI_BYTE,MPI_COMM_WORLD);
+    
+    rbodies.clear();
     rbodies = recvbuffer; 
-
+    
     // Sort the incoming buffer 
-    sort(rbodies.begin(),rbodies.end(),[](auto& left, auto &right){
-      return left.first<right.first;
-    }); 
+    sort(rbodies.begin(),rbodies.end(),
+      [](auto& left, auto &right){
+        if(left.first<right.first){
+          return true; 
+        }
+        if(left.first == right.first){
+          return left.second.getId()<right.second.getId(); 
+        }
+        return false; 
+      }); 
+
+    // Display last value 
+    //std::cout<<rank<<": LAST VALUE="<<rbodies.back().second<<std::endl;
 
     // Check for duplicates
-    //assert(rbodies.end() == std::unique(rbodies.begin(),rbodies.end(),
-    //    [](const auto& left, const auto& right ){ 
-    //      return left.first == right.first;
-    //    })
-    //);
-
+    /*auto tmp2 = rbodies; 
+    if(!(tmp2.end() == std::unique(tmp2.begin(),tmp2.end(),
+        [&rank](auto& left, auto& right ){ 
+          if( left.first == right.first ){
+            std::cout<<rank<<": unique check: "<<left.second<<
+            " && "<<right.second<<std::endl;
+            assert(left.second.getId() != right.second.getId()); 
+            return true; 
+          } 
+          return false; 
+        }))){
+        std::cout<<rank<<": duplicated keys in mpi_sort"<<std::endl;
+    }*/
 
     std::vector<int> totalprocbodies;
     totalprocbodies.resize(size);
@@ -1025,8 +1099,8 @@ public:
    * @param      range  The range of the particles, use to construct entity_keys
    */
   void mpi_tree_traversal_graphviz(
-    tree_topology_t & tree,
-    std::array<point_t,2>& range)
+    tree_topology_t & tree/*,*/
+    /*std::array<point_t,2>& range*/)
   {
     int rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
@@ -1064,7 +1138,7 @@ public:
       }else{
         for(auto ent: *cur)
         {
-          entity_key_t key(range,ent->coordinates());
+          entity_key_t key(/*range,*/ent->coordinates());
           output<<std::bitset<64>(cur->id().value_())<<
             "->"<<key<<std::endl;
           switch (ent->getLocality())
@@ -1178,7 +1252,8 @@ public:
         sendbuffer.push_back(body_holder_mpi_t{
             ent->getPosition(),
             rank,
-            ent->getMass()});
+            ent->getMass(),
+	          ent->getId()});
       }
     }
 
@@ -1206,7 +1281,7 @@ public:
     {
       assert(bi.owner!=rank);
       assert(bi.mass!=0.);
-      auto nbi = tree.make_entity(bi.position,nullptr,bi.owner,bi.mass);
+      auto nbi = tree.make_entity(bi.position,nullptr,bi.owner,bi.mass,bi.id);
       tree.insert(nbi);
     }
 
@@ -1287,8 +1362,8 @@ public:
    * @param      range  The range
    */
   void mpi_refresh_ghosts(
-    tree_topology_t& tree, 
-    std::array<point_t,2>& range)
+    tree_topology_t& tree/*,*/ 
+    /*std::array<point_t,2>& range*/)
   {
     int rank,size;
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
@@ -1312,29 +1387,46 @@ public:
       }
     }  
 
+    int total = 0;
+    for(int i = 0; i < size ; ++i){
+        total += ghosts_data.soffsets[i]+ghosts_data.roffsets[i]
+        +ghosts_data.sholders[i]+ghosts_data.rholders[i]; 
+    }
+    
+    if(size > 1){
+      assert(total != 0); 
+    }
+
     MPI_Alltoallv(&ghosts_data.sbodies[0],&ghosts_data.sholders[0],
       &ghosts_data.soffsets[0],MPI_BYTE,
       &ghosts_data.rbodies[0],&ghosts_data.rholders[0],
       &ghosts_data.roffsets[0],MPI_BYTE,
       MPI_COMM_WORLD);
 
+    //MPI_Barrier(MPI_COMM_WORLD); 
+    //std::cout<<rank<<" AFTER COM"<<std::endl<<std::flush;
+
     // Sort the bodies based on key and or position
     std::sort(ghosts_data.rbodies.begin(),
             ghosts_data.rbodies.end(),
-      [range](auto& left, auto& right){
-        if(entity_key_t(range,left.coordinates())<
-          entity_key_t(range,right.coordinates())){
+      [/*range*/](auto& left, auto& right){
+        if(entity_key_t(/*range,*/left.coordinates())<
+          entity_key_t(/*range,*/right.coordinates())){
           return true;
         }
-        if(entity_key_t(range,left.coordinates())==
-          entity_key_t(range,right.coordinates())){
-          std::cout<<"Key collision"<<std::endl;
-          return left.coordinates()<right.coordinates();
+        if(entity_key_t(/*range,*/left.coordinates())==
+          entity_key_t(/*range,*/right.coordinates())){
+          //std::cout<<"Key collision for:"<< 
+	        //left.coordinates()<< " && " << right.coordinates()<<
+          //" Ids: "<<left.getId()<< " && " << right.getId() <<std::endl;
+          return left.getId()<right.getId();
         }
         return false;
       });
  
- 
+
+    assert(ghosts_data.rbodies.size() == ghosts_data.recvholders.size()); 
+
     // Then link the holders with these bodies
     auto it = ghosts_data.rbodies.begin();
     if(size==1)
@@ -1348,11 +1440,15 @@ public:
       //std::cout<<rank<<": get: "<<*it<<std::endl<<std::flush;
       
       assert(!bh->is_local() && "Non local particle");
-      assert(entity_key_t(range,bh->coordinates()) == 
-          entity_key_t(range,bh->getBody()->coordinates()) && 
+
+      assert(entity_key_t(/*range,*/bh->coordinates()) == 
+          entity_key_t(/*range,*/bh->getBody()->coordinates()) && 
           "Key different than holder");
       assert(bh->coordinates()==bh->getBody()->coordinates() &&
           "Position different than holder");
+      assert(bh->getId() == bh->getBody()->getId()&& 
+          "Id different from holder");     
+      
       // Replace the body_holder by the received
       bh->getBody()->setPosition(bh->getPosition());
       bh->setPosition(bh->getBody()->getPosition());
@@ -1381,10 +1477,9 @@ public:
   void 
   mpi_compute_ghosts(
     tree_topology_t& tree,
-    double smoothinglength,
-    std::array<point_t,2>& range)
-  {
-    int rank,size;
+    double smoothinglength/*,*/
+    /*std::array<point_t,2>& range*/)
+  {    int rank,size;
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
     MPI_Comm_size(MPI_COMM_WORLD,&size);
   
@@ -1393,6 +1488,16 @@ public:
     if(rank==0)
       std::cout<<"Compute Ghosts" << std::flush;
 #endif
+
+    //auto tmp = tree.entities().to_vec(); 
+    //if(!(tmp.end() == std::unique(tmp.begin(),tmp.end(),
+    //    [&rank/*,&range*/](const auto& left, const auto& right ){ 
+    //      return left->getId() == right->getId(); 
+    //    }))){
+    //    std::cout<<rank<<": duplicated ID in compute"<<std::endl;
+    //}
+
+
 
     // Clean the structure 
     ghosts_data.sbodies.clear();
@@ -1410,20 +1515,22 @@ public:
     // TODO add a reduction over h 
     int totalrecvbodies = 0;
     int totalsendbodies = 0;
-    auto treeents = tree.entities().to_vec();
+    auto treeents = tree.entities().to_vec(); 
     for(auto bi: treeents)
     {  
       if(bi->is_local())
       {
         assert(bi->getOwner() == rank);
+        assert(bi->getBody()->getSmoothinglength() > 0); 
         auto bodiesneighbs = tree.find_in_radius_b(
             bi->coordinates(),
             2.*bi->getBody()->getSmoothinglength());
+        assert(bodiesneighbs.size() > 0);
         for(auto nb: bodiesneighbs)
-	{
+	      {
           if(!nb->is_local())
           {
-	    assert(nb->getOwner()!=rank && nb->getOwner() != -1); 
+	          assert(nb->getOwner()!=rank && nb->getOwner() != -1); 
             ghosts_data.sendholders[nb->getOwner()].insert(bi);
             recvholders[nb->getOwner()].insert(nb);
           }
@@ -1436,7 +1543,7 @@ public:
       ghosts_data.sholders[i] = ghosts_data.sendholders[i].size();
       assert(ghosts_data.sholders[i]>=0);
       totalsendbodies += ghosts_data.sholders[i];
-    }
+    } 
   
     for(int i=0;i<size;++i)
     {
@@ -1490,15 +1597,20 @@ public:
     // Sort the holders once
     std::sort(ghosts_data.recvholders.begin(),
             ghosts_data.recvholders.end(),
-      [range](auto& left, auto& right){
-        if(entity_key_t(range,left->coordinates())<
-          entity_key_t(range,right->coordinates())){
+      [/*range*/](auto& left, auto& right){
+        if(entity_key_t(/*range,*/left->coordinates())<
+          entity_key_t(/*range,*/right->coordinates())){
           return true;
         }
-        if(entity_key_t(range,left->coordinates())==
-          entity_key_t(range,right->coordinates())){
-          std::cout<<"Key collision"<<std::endl;
-          return left->coordinates()<right->coordinates();
+        if(entity_key_t(/*range,*/left->coordinates())==
+          entity_key_t(/*range,*/right->coordinates())){
+          //std::cout<<"Key collision for: "<<
+	        //left->coordinates()<<" && "<<right->coordinates()
+	        //<< " Distance: "<< 
+	        //flecsi::distance(left->coordinates(),right->coordinates()) 
+	        //<< std::endl;
+          
+ 	        return left->getId()<right->getId();
         }
         return false;
       });
@@ -2064,7 +2176,7 @@ mpi_branches_exchange_useful(tree_topology_t& tree,
   for(auto bi: recvbuffer)
   {
     assert(bi.owner!=rank);
-    auto nbi = tree.make_entity(bi.position,nullptr,bi.owner,bi.mass);
+    auto nbi = tree.make_entity(bi.position,nullptr,bi.owner,bi.mass,bi.id);
     tree.insert(nbi);
   }
 
