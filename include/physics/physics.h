@@ -21,6 +21,11 @@
  * @author Julien Loiseau
  * @date April 2017
  * @brief Basic physics implementation
+ *******************************************************************
+ * @date August.16.2017
+ * @author Hyun Lim
+ * @Add more equations and different terms in SPH formulation 
+ *******************************************************************
  */
 
 #ifndef _physics_physics_h_
@@ -476,6 +481,66 @@ namespace physics{
     }
     source->setLinMomentum(lin_momentum);   
   }
+#if 1
+/*
+ * This is the additional equations for fluid dynamics.
+ * Here this is:
+ * Viscous term <Eqn>
+ * Heat transfer <Eqn>
+ * We are still working on this part...
+ */
+
+  void 
+  compute_fluid_force1(
+    body_holder* srch, 
+    std::vector<body_holder*>& ngbsh)
+  { 
+    body* source = srch->getBody();
+
+    // reset acceleration 
+    source->setAcceleration(point_t{});
+
+    // Add in the acceleration
+    point_t acceleration = source->getAcceleration();
+
+    point_t hydro = {};
+    for(auto nbh : ngbsh){ 
+      body* nb = nbh->getBody();
+
+      if(nb->getPosition() == source->getPosition()){
+        continue;
+      }
+	
+      // Artificial viscosity
+      double density_ij = (1./2.)*(source->getDensity()+nb->getDensity());
+      double soundspeed_ij = (1./2.)*
+        (source->getSoundspeed()+nb->getSoundspeed());
+      double mu_ij = mu(source,nb,epsilon);
+      double viscosity = (-alpha*mu_ij*soundspeed_ij+beta*mu_ij*mu_ij)
+        /density_ij;
+      assert(viscosity>=0.0);
+
+      // Hydro force
+      point_t vecPosition = source->getPosition()-nb->getPosition();
+      double pressureDensity = source->getPressure()/(source->getDensity()*
+          source->getDensity())
+          + nb->getPressure()/(nb->getDensity()*nb->getDensity());
+      point_t sourcekernelgradient = gradKernel(
+          vecPosition,source->getSmoothinglength());
+      point_t nbkernelgradient = gradKernel(
+          vecPosition,nb->getSmoothinglength());
+      point_t resultkernelgradient = (1./2.)*
+        (sourcekernelgradient+nbkernelgradient);
+
+      hydro += nb->getMass()*(pressureDensity+viscosity)
+        *resultkernelgradient;
+
+    }
+    hydro = -1.0*hydro;
+    acceleration += hydro;
+    source->setAcceleration(acceleration);
+  } // compute_fluid_force1
+#endif
 
 }; // physics
 
