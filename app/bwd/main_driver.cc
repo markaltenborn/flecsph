@@ -54,14 +54,14 @@ mpi_init_task(int startiteration){
   MPI_Comm_size(MPI_COMM_WORLD,&size);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   
-  int totaliters = 3000;
-  int iteroutput = 10;
+  int totaliters = 30000;
+  int iteroutput = 50;
   double totaltime = 0.0;
   double maxtime = 10.0;
   int iter = startiteration; 
 
   // Init if default values are not ok
-  physics::dt = 0.005;
+  physics::dt = 0.01;
   physics::alpha = 1; 
   physics::beta = 2; 
   physics::stop_boundaries = true;
