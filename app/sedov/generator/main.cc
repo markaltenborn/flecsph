@@ -3,54 +3,24 @@
  * All rights reserved.
  *~--------------------------------------------------------------------------~*/
 
- #include <iostream>
+#include <iostream>
 #include <algorithm>
 #include <cassert>
 
 #include "hdf5ParticleIO.h"
 #include "kernel.h"
 
-
 const double ldistance = 0.001;  // Distance between the particles 
 const double localgamma = 5./3.;
-const double rho_1 = 1;
-//const double rho_2 = 0.125;
-const double pressure_1 = 10e-7;
-//const double pressure_2 = 0.1;
-const double u_1 = 0.0001;
-//const double u_2 = 2;
-const double m_1 = 1.0e-7;
-//const double m_2 = 1.0e-5;
+const double rho_in = 1.0;
+const double pressure_in = 1.0e-7;
+const double u_in = pressure_in/(rho_in*(localgamma - 1.0));
+const double u_blast = 1.0;
 const double smoothing_length = 5.*ldistance;
 const char* fileprefix = "hdf5_sedov";
 
-bool 
-in_radius(
-    double x,
-    double y,
-    double x0,
-    double y0, 
-    double r)
-{
-  return (x-x0)*(x-x0)+(y-y0)*(y-y0)<r*r;
-}
-
-double 
-density(
-    double x,
-    double y,
-    double x0,
-    double y0)
-{
-  double radius = sqrt(pow(x-x0,2.)+pow(y-y0,2.)); 
-  if(radius==0.){
-    return 100.;
-  }
-  return (100.-radius)/(radius); 
-}
 
 int main(int argc, char * argv[]){
-
 
   int64_t sparticles = 101;
   if(argc!=2){
@@ -77,7 +47,12 @@ int main(int argc, char * argv[]){
 
   double maxxposition = (sparticles)*ldistance;
   double maxyposition = (sparticles)*ldistance;
-  
+
+  double x_c = (sparticles-1)*ldistance/2.0;
+  double y_c = (sparticles-1)*ldistance/2.0;
+
+  double mass = rho_in * maxxposition * maxyposition/nparticles;  
+
   // Position
   double* x = new double[nparticles]();
   double* y = new double[nparticles]();
@@ -111,37 +86,54 @@ int main(int argc, char * argv[]){
   // Header data 
   // the number of particles = nparticles 
   // The value for constant timestep 
-  double timestep = 0.001;
+  double timestep = 1.e-3;
   int dimension = 2;
   
-  double xposition = 0;//*/x_topproc; 
+  double xposition = 0;
+  double yposition = 0;
+
+  int64_t particles_blast = 0;
   int64_t tparticles = 0;
-  double yposition = 0;//*/y_topproc;
-  //int xpos = 0;
-  for(int64_t part=0; part<nparticles; ++part){
-    
+
+  for (int64_t part=0; part<nparticles; ++part) {
     tparticles++;
     x[part] = xposition;
     y[part] = yposition;
-         
-    P[part] = pressure_1;
-    rho[part] = rho_1; 
-    m[part] = m_1;//density(x[part],y[part],x_c,y_c);
-    u[part] = u_1;
-    h[part] = smoothing_length;
-    id[part] = posid++;
 
-    if(part == nparticles/2){
-      u[part] = 5.;
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 2.0*ldistance) {
+      particles_blast++;
     }
-   
-    xposition+= ldistance; 
+ 
+    xposition+= ldistance;
     if(xposition > maxxposition){
       xposition = 0.;
       yposition+=ldistance;
     }
+  }
 
+ 
+  for(int64_t part=0; part<nparticles; ++part){    
+    //tparticles++;
+    //x[part] = xposition;
+    //y[part] = yposition;
+         
+    P[part]   = pressure_in;
+    rho[part] = rho_in; 
+    m[part]   = mass;
+    u[part]   = u_in;
+    h[part]   = smoothing_length;
+    id[part]  = posid++;
 
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 2.0*ldistance) {
+      u[part] = u_blast/particles_blast;
+      P[part] = u[part]*rho[part]*(localgamma - 1.0);
+    }
+
+    //xposition+= ldistance; 
+    //if(xposition > maxxposition){
+    //  xposition = 0.;
+    //  yposition+=ldistance;
+    //}
   }
 
   std::cout<<"Real number of particles: "<<tparticles<<std::endl;
