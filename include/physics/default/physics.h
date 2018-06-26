@@ -40,9 +40,9 @@ namespace physics{
   point_t max_boundary = {};
   point_t min_boundary = {};
   double dt = 0.0;
-  double alpha = 2; 
+  double alpha = 1; 
   double beta = 2; // 1; 
-  double gamma = 1.4;//2.0; // 1.4; 
+  double gamma = 5.0/3.0;
   double K = 1;
   double epsilon = 1;
   double g_strength = 1; 
@@ -188,6 +188,9 @@ namespace physics{
     std::vector<body_holder*>& ngbsh)
   { 
     body* source = srch->getBody();
+
+    // reset acceleration                 //!
+    //source->setAcceleration(point_t{});   //!
 
     // Add in the acceleration
     point_t acceleration = point_t{};//source->getAcceleration();

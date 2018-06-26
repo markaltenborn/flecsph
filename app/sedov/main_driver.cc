@@ -57,7 +57,7 @@ mpi_init_task(int startiteration){
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   
   int totaliters = 1000;
-  int iteroutput = 1;
+  int iteroutput = 10;
   double totaltime = 0.0;
   double maxtime = 10.0;
   int iter = startiteration; 

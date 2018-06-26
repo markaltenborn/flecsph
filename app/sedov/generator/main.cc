@@ -16,7 +16,7 @@ const double rho_in = 1.0;
 const double pressure_in = 1.0e-7;
 const double u_in = pressure_in/(rho_in*(localgamma - 1.0));
 const double u_blast = 1.0;
-const double smoothing_length = 5.*ldistance;
+const double smoothing_length = 4.*ldistance;
 const char* fileprefix = "hdf5_sedov";
 
 
@@ -86,7 +86,7 @@ int main(int argc, char * argv[]){
   // Header data 
   // the number of particles = nparticles 
   // The value for constant timestep 
-  double timestep = 1.e-3;
+  double timestep = 5.e-4;
   int dimension = 2;
   
   double xposition = 0;
@@ -100,7 +100,7 @@ int main(int argc, char * argv[]){
     x[part] = xposition;
     y[part] = yposition;
 
-    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 2.0*ldistance) {
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) <= 1.0*ldistance) {
       particles_blast++;
     }
  
@@ -111,6 +111,8 @@ int main(int argc, char * argv[]){
     }
   }
 
+
+  double mass_total = 0;
  
   for(int64_t part=0; part<nparticles; ++part){    
     //tparticles++;
@@ -124,7 +126,8 @@ int main(int argc, char * argv[]){
     h[part]   = smoothing_length;
     id[part]  = posid++;
 
-    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 2.0*ldistance) {
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) <= 1.0*ldistance) {
+      mass_total += m[part];
       u[part] = u_blast/particles_blast;
       P[part] = u[part]*rho[part]*(localgamma - 1.0);
     }
@@ -137,6 +140,7 @@ int main(int argc, char * argv[]){
   }
 
   std::cout<<"Real number of particles: "<<tparticles<<std::endl;
+  std::cout<<mass_total<<std::endl;
 
   char filename[128];
   //sprintf(filename,"%s_%d.h5part",fileprefix,nparticles);
