@@ -11,12 +11,12 @@
 #include "kernel.h"
 
 const double ldistance = 0.001;  // Distance between the particles 
-const double localgamma = 5./3.;
+const double localgamma = 2.0;
 const double rho_in = 1.0;
-const double pressure_in = 1.0e-7;
+const double pressure_in = 1.0e-10;
 const double u_in = pressure_in/(rho_in*(localgamma - 1.0));
 const double u_blast = 1.0;
-const double smoothing_length = 4.*ldistance;
+const double smoothing_length = 4 * ldistance;
 const char* fileprefix = "hdf5_sedov";
 
 
@@ -86,7 +86,7 @@ int main(int argc, char * argv[]){
   // Header data 
   // the number of particles = nparticles 
   // The value for constant timestep 
-  double timestep = 5.e-4;
+  double timestep = 1.e-3;
   int dimension = 2;
   
   double xposition = 0;
@@ -100,7 +100,7 @@ int main(int argc, char * argv[]){
     x[part] = xposition;
     y[part] = yposition;
 
-    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) <= 1.0*ldistance) {
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 1.0*ldistance) {
       particles_blast++;
     }
  
@@ -115,9 +115,6 @@ int main(int argc, char * argv[]){
   double mass_total = 0;
  
   for(int64_t part=0; part<nparticles; ++part){    
-    //tparticles++;
-    //x[part] = xposition;
-    //y[part] = yposition;
          
     P[part]   = pressure_in;
     rho[part] = rho_in; 
@@ -126,24 +123,17 @@ int main(int argc, char * argv[]){
     h[part]   = smoothing_length;
     id[part]  = posid++;
 
-    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) <= 1.0*ldistance) {
+    if (sqrt((x[part]-x_c)*(x[part]-x_c) + (y[part]-y_c)*(y[part]-y_c)) < 1.0*ldistance) {
       mass_total += m[part];
       u[part] = u_blast/particles_blast;
       P[part] = u[part]*rho[part]*(localgamma - 1.0);
     }
-
-    //xposition+= ldistance; 
-    //if(xposition > maxxposition){
-    //  xposition = 0.;
-    //  yposition+=ldistance;
-    //}
   }
 
   std::cout<<"Real number of particles: "<<tparticles<<std::endl;
-  std::cout<<mass_total<<std::endl;
+  std::cout<<"Total blast energy (E_blast = u_blast * total mass):"<<u_blast * mass_total<< std::endl;
 
   char filename[128];
-  //sprintf(filename,"%s_%d.h5part",fileprefix,nparticles);
   sprintf(filename,"%s.h5part",fileprefix);
   // Remove the previous file 
   remove(filename); 

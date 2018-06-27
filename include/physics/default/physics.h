@@ -41,15 +41,15 @@ namespace physics{
   point_t min_boundary = {};
   double dt = 0.0;
   double alpha = 1; 
-  double beta = 2; // 1; 
-  double gamma = 5.0/3.0;
+  double beta = 2;
+  double gamma = 2.0;
   double K = 1;
   double epsilon = 1;
   double g_strength = 1; 
   double damp = 1;
   double totaltime = 0.0;
   double MAC = 0.;
-  double eta = 0.01;
+  double eta = 0.1;
 
   // Default configuration for kernel
   int kernel_choice = 0;
@@ -156,8 +156,10 @@ namespace physics{
       return result;
     // Should add norm to space_vector
     double dist = flecsi::distance(source->getPosition(),nb->getPosition());
-    result = h_ij * dotproduct / (dist*dist + epsilon);
-    
+    //result = h_ij * dotproduct / (dist*dist + epsilon);    
+    result = h_ij * dotproduct / (dist*dist + eta*eta*h_ij*h_ij);
+
+
     mpi_assert(result < 0.0);
     return result; 
   } // mu

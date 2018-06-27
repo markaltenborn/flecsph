@@ -56,7 +56,7 @@ mpi_init_task(int startiteration){
   MPI_Comm_size(MPI_COMM_WORLD,&size);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   
-  int totaliters = 1000;
+  int totaliters = 500;
   int iteroutput = 10;
   double totaltime = 0.0;
   double maxtime = 10.0;
@@ -66,16 +66,16 @@ mpi_init_task(int startiteration){
   physics::dt = 0.001;
   physics::alpha = 1; 
   physics::beta = 2; 
-  physics::do_boundaries = true;
-  physics::stop_boundaries = true;
-  physics::gamma = 5./3.;
+  //physics::do_boundaries = true;
+  //physics::stop_boundaries = true;
+  physics::gamma = 2.0;
 
   body_system<double,gdimension> bs;
   bs.read_bodies("hdf5_sedov.h5part",startiteration);
   //io::inputDataHDF5(rbodies,"hdf5_sodtube.h5part",totalnbodies,nbodies);
 
   double h = bs.getSmoothinglength();
-  physics::epsilon = 0.01*h*h;
+  //physics::epsilon = 0.01*h*h;
 
   auto range_boundaries = bs.getRange(); 
   point_t distance = range_boundaries[1]-range_boundaries[0];
